@@ -1,0 +1,102 @@
+version: "3.7"
+# docker stack deploy -c docker-stack-infra.yml storage
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    volumes:
+        - rabbit_data:/var/lib/rabbitmq/
+        - rabbit_log:/var/log/rabbitmq
+    networks:
+        - reverse-proxy
+        - rabbitmq-net
+    environment: 
+      RABBITMQ_DEFAULT_PASS: rabbit
+      RABBITMQ_DEFAULT_USER: rabbit
+      RABBITMQ_DEFAULT_VHOST: rabbit
+    deploy:
+        placement:
+          constraints: [node.role == manager]
+        restart_policy:
+            condition: any
+        labels:
+          - "traefik.enable=true"
+          - "traefik.docker.network=rabbitmq-net"
+          - "traefik.http.routers.rabbit.rule=Host(`rabbitmq.localhost`)"
+          - "traefik.http.routers.rabbit.service=rabbit"
+          - "traefik.http.routers.rabbit.entrypoints=web"
+          - "traefik.http.services.rabbit.loadbalancer.server.port=15672"
+          - "traefik.tcp.routers.rabbitmq.rule=HostSNI(`rabbitmq.localhost`)"
+          - "traefik.tcp.routers.rabbitmq.service=rabbitmq"
+          - "traefik.tcp.routers.rabbitmq.entrypoints=rabbitmq"
+          - "traefik.tcp.services.rabbitmq.loadbalancer.server.port=5672"
+
+  postgresdb:
+    image: postgres:14.1-alpine
+    ports:
+        - 5433:5432
+    volumes: 
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+        - reverse-proxy
+        - postgresdb-net
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    deploy:
+        placement:
+          constraints: [node.role == manager]
+        restart_policy:
+            condition: any
+        labels:
+          - "traefik.enable=true"
+          - "traefik.docker.network=postgresdb-net"
+          - "traefik.tcp.routers.postgresdb.rule=HostSNI(`postgresdb.localhost`)"
+          - "traefik.tcp.routers.postgresdb.service=postgresdb"
+          - "traefik.tcp.routers.postgresdb.entrypoints=postgres"
+          - 'traefik.tcp.routers.postgresdb.tls=true'
+          - "traefik.tcp.services.postgresdb.loadbalancer.server.port=5432"
+
+  mongodb:
+    image: mongo:4.4.6
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongodb
+      MONGO_INITDB_ROOT_PASSWORD: mongodb
+    volumes:
+      - mongo-configdb:/data/configdb
+      - mongo-db:/data/db
+      - mongo-backup:/data/backup
+    networks:
+      - mongodb-net
+    #ports:
+    #    - 27017:27017
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+          condition: any
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=mongodb-net"
+        - "traefik.tcp.routers.mongodb.rule=HostSNI(`mongodb.localhost`)"
+        - "traefik.tcp.routers.mongodb.service=mongodb"
+        - "traefik.tcp.routers.mongodb.entrypoints=mongodb"
+        - 'traefik.tcp.routers.mongodb.tls=true'
+        - "traefik.tcp.services.mongodb.loadbalancer.server.port=27017"
+
+networks:
+   reverse-proxy:
+      external: true
+   rabbitmq-net:
+      driver: overlay
+   postgresdb-net:
+      driver: overlay
+   mongodb-net:
+      driver: overlay
+volumes:
+  rabbit_data:
+  rabbit_log:
+  postgres_data:
+  mongo-configdb:
+  mongo-db:
+  mongo-backup:

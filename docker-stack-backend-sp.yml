@@ -1,0 +1,86 @@
+version: '3.7'
+# docker stack deploy -c docker-stack-backend-sp.yml station-production
+services:
+  product-service-api:
+    image: ghcr.io/maurisff/sp-product-service-api:latest
+    environment:
+      - DB_KIND=postgresql
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_URL=jdbc:postgresql://postgresdb:5432/db-product-dev
+      #- DB_SHOWSQL=false
+      - RABBITMQ_USERNAME=rabbit
+      - RABBITMQ_PASSWORD=rabbit
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_VHOST=rabbit
+    networks:
+      - reverse-proxy
+      - station-production
+    deploy:
+      mode: replicated
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=reverse-proxy"
+        - "traefik.http.routers.product-service-api.rule=Host(`backend.localhost`)&&PathPrefix(`/rest/product/`)"
+        - "traefik.http.routers.product-service-api.service=product-service-api"
+        - "traefik.http.routers.product-service-api.entrypoints=web"
+        - "traefik.http.services.product-service-api.loadbalancer.server.port=8080"
+  production-data-sheet-service-api:
+    image: ghcr.io/maurisff/sp-production-data-sheet-service-api:latest
+    environment:
+      - DB_KIND=postgresql
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_URL=jdbc:postgresql://postgresdb:5432/db-production-data-sheet-dev
+      #- DB_SHOWSQL=true
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=rabbitmq
+      - RABBITMQ_PASSWORD=rabbitmq
+      - RABBITMQ_VHOST=rabbitmq
+    networks:
+      - reverse-proxy
+      - station-production
+    deploy:
+      mode: replicated
+      replicas: 0
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=reverse-proxy"
+        - "traefik.http.routers.production-data-sheet-service-api.rule=Host(`backend.localhost`)&&PathPrefix(`/rest/production-data-sheet/`)"
+        - "traefik.http.routers.production-data-sheet-service-api.service=production-data-sheet-service-api"
+        - "traefik.http.routers.production-data-sheet-service-api.entrypoints=web"
+        - "traefik.http.services.production-data-sheet-service-api.loadbalancer.server.port=8080"
+
+networks:
+  reverse-proxy:
+      external: true
+  station-production:
+      driver: overlay
+      attachable: true
